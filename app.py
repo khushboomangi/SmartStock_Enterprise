@@ -129,8 +129,8 @@ def load_model():
 
 try:
     model = load_model()
-except Exception:
-    st.error("Model file 'inventory_forecasting_model.pkl' not found.")
+except Exception as e:
+    st.error(f"Error loading model: {e}")
     st.stop()
 
 def convert_df_to_excel(df):
