@@ -218,7 +218,7 @@ def generate_customer_invoice(cust_name, cust_phone, cart_items, discount, net_t
 
     pdf.ln(15)
     pdf.set_font("Arial", "I", 9)
-    pdf.cell(0, 5, "Thank you for doing business with SmartStock Wholesale!", align="C", ln=True)
+    pdf.cell(0, 5, "Thank you for doing business with SmartStock Enterprise!", align="C", ln=True)
 
     return pdf.output(dest="S").encode("latin1")
 
