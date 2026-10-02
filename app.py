@@ -123,7 +123,9 @@ if not st.session_state["authenticated"]:
 # ==========================================
 @st.cache_resource
 def load_model():
-    return joblib.load("inventory_forecasting_model.pkl")
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    model_path = os.path.join(base_dir, "inventory_forecasting_model.pkl")
+    return joblib.load(model_path)
 
 try:
     model = load_model()
