@@ -390,7 +390,7 @@ def record_sale_transaction(item, qty, price, cust_name):
             conn.execute(text("""
                 INSERT INTO sales_history (date, item_name, quantity_sold, unit_price, customer_name, recorded_by)
                 VALUES (:date, :item, :qty, :price, :cust, :user)
-            """), {"date": current_timestamp, "item": item, "qty": qty, "price": price, "cust": cust_name, "user": recorded_by})
+           """), {"date": current_timestamp, "item": str(item), "qty": float(qty), "price": float(price), "cust": str(cust_name), "user": str(recorded_by)})
             conn.commit()
     else:
         # SQLite Transaction Recording Fallback
