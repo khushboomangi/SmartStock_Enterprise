@@ -171,7 +171,7 @@ def generate_customer_invoice(cust_name, cust_phone, cart_items, discount, net_t
     pdf.set_font("Arial", "B", 18)
     pdf.cell(0, 10, "SMARTSTOCK - CUSTOMER INVOICE", ln=True, align="C")
     pdf.set_font("Arial", "", 10)
-    pdf.cell(0, 6, "Nawabshah Wholesale Depot & Distribution Hub", ln=True, align="C")
+    pdf.cell(0, 6, "Nawabshah Enterprise Depot & Distribution Hub", ln=True, align="C")
     pdf.ln(8)
 
     current_time_str = datetime.now().strftime("%d-%b-%Y %I:%M:%S %p")
