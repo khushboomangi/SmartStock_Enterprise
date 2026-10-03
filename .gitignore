@@ -3,3 +3,4 @@ inventory.db
 __pycache__/
 *.pyc
 .streamlit/secrets.toml
+passcode.txt
