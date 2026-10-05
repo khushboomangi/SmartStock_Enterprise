@@ -7,4 +7,5 @@ joblib
 openpyxl
 python-dotenv
 psycopg2-binary
+scikit-learn
 sqlalchemy
