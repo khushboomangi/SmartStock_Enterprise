@@ -383,28 +383,14 @@ def record_sale_transaction(item, qty, price, cust_name):
     engine = get_db_connection()
     current_timestamp = datetime.now()
     recorded_by = st.session_state.get("user_role", "Staff")
-
     if engine:
-        try:
-            with engine.connect() as conn:
-                # Sale insert karna
-                conn.execute(text("""
-                    INSERT INTO sales_history (date, item_name, quantity_sold, unit_price, customer_name, recorded_by)
-                    VALUES (:date, :item, :qty, :price, :cust, :user)
-                """), {
-                    "date": current_timestamp, 
-                    "item": str(item), 
-                    "qty": float(qty), 
-                    "price": float(price), 
-                    "cust": str(cust_name), 
-                    "user": str(recorded_by)
-                })
-                conn.commit()
-                return True
-        except Exception as e:
-            st.error(f"Transaction save hone mein masla aaya: {e}")
-            return False
-    return False
+        # PostgreSQL Transaction Recording
+        with engine.connect() as conn:
+            conn.execute(text("""
+                INSERT INTO sales_history (date, item_name, quantity_sold, unit_price, customer_name, recorded_by)
+                VALUES (:date, :item, :qty, :price, :cust, :user)
+           """), {"date": current_timestamp, "item": str(item), "qty": float(qty), "price": float(price), "cust": str(cust_name), "user": str(recorded_by)})
+            conn.commit()
     else:
         # SQLite Transaction Recording Fallback
         conn = sqlite3.connect("inventory.db")
