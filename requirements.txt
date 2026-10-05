@@ -1,0 +1,10 @@
+streamlit
+pandas
+numpy
+plotly
+fpdf
+joblib
+openpyxl
+python-dotenv
+psycopg2-binary
+sqlalchemy
