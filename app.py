@@ -1,6 +1,3 @@
-from dotenv import load_dotenv
-load_dotenv()
-
 import io
 import os
 import sqlite3
@@ -8,6 +5,13 @@ import smtplib
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+
+# Safe environment loading (Streamlit Cloud friendly)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
 
 import fpdf
 import joblib
@@ -18,7 +22,7 @@ import streamlit as st
 from sqlalchemy import create_engine, text
 
 # ==========================================
-# PAGE CONFIGURATION & CUSTOM STYLING
+# PAGE CONFIGURATION
 # ==========================================
 st.set_page_config(
     page_title="SmartStock - Wholesale System",
@@ -28,17 +32,16 @@ st.set_page_config(
 )
 
 # ==========================================
-# DATABASE ENGINE (PostgreSQL with SQLite Fallback)
+# DATABASE ENGINE (PostgreSQL with Timeout & Fallback)
 # ==========================================
-DB_URI = os.getenv("DATABASE_URL")
-
-import streamlit as st
+# Secret management: Prioritize Streamlit Secrets, fallback to os.getenv
+DB_URI = st.secrets.get("postgres", {}).get("url") or os.getenv("DATABASE_URL")
 
 @st.cache_resource
 def get_db_connection():
-    """Returns PostgreSQL SQLAlchemy engine connection or SQLite fallback."""
+    """Returns PostgreSQL SQLAlchemy engine with timeout or SQLite fallback."""
     if DB_URI:
-        uri = DB_URI.strip('"\'')
+        uri = str(DB_URI).strip('"\'')
         if uri.startswith("postgresql://"):
             uri = uri.replace("postgresql://", "postgresql+psycopg2://", 1)
         elif uri.startswith("postgres://"):
@@ -47,50 +50,66 @@ def get_db_connection():
         if "&channel_binding=" in uri:
             uri = uri.split("&channel_binding=")[0]
             
-        # pool_pre_ping and pool_size for speed
-        engine = create_engine(uri, pool_size=5, max_overflow=10, pool_pre_ping=True)
-        return engine
+        try:
+            # Added connect_timeout=5 to prevent infinite loading hang
+            engine = create_engine(
+                uri, 
+                pool_size=5, 
+                max_overflow=10, 
+                pool_pre_ping=True,
+                connect_args={"connect_timeout": 5}
+            )
+            # Connection test
+            with engine.connect() as conn:
+                pass
+            return engine
+        except Exception as e:
+            st.warning("⚠️ Cloud PostgreSQL connect nahi ho saka. Local SQLite database activate ho raha hai.")
+            return None
     return None
+
 def init_db():
     engine = get_db_connection()
     if engine:
-        # PostgreSQL Schema Execution
-        with engine.connect() as conn:
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS sales_history (
-                    id SERIAL PRIMARY KEY,
-                    date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    item_name VARCHAR(255),
-                    quantity_sold NUMERIC,
-                    unit_price NUMERIC,
-                    customer_name VARCHAR(255),
-                    recorded_by VARCHAR(100)
-                );
-            """))
-            conn.commit()
-    else:
-        # SQLite Schema Execution (Fallback)
-        conn = sqlite3.connect("inventory.db")
-        cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS sales_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date TEXT,
-                item_name TEXT,
-                quantity_sold REAL,
-                unit_price REAL,
-                customer_name TEXT,
-                recorded_by TEXT
-            )
-        """)
-        conn.commit()
-        conn.close()
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS sales_history (
+                        id SERIAL PRIMARY KEY,
+                        date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        item_name VARCHAR(255),
+                        quantity_sold NUMERIC,
+                        unit_price NUMERIC,
+                        customer_name VARCHAR(255),
+                        recorded_by VARCHAR(100)
+                    );
+                """))
+                conn.commit()
+            return
+        except Exception:
+            pass
+            
+    # SQLite Fallback Execution
+    conn = sqlite3.connect("inventory.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sales_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT,
+            item_name TEXT,
+            quantity_sold REAL,
+            unit_price REAL,
+            customer_name TEXT,
+            recorded_by TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
 
 init_db()
 
-
 # ==========================================
-# AUTHENTICATION & ROLE-BASED ACCESS CONTROL (RBAC)
+# AUTHENTICATION & ROLE-BASED ACCESS CONTROL
 # ==========================================
 USER_ROLES = {
     "admin123": "Admin",
@@ -117,7 +136,6 @@ if not st.session_state["authenticated"]:
             st.error("Authentication Failed: Invalid Passcode.")
     st.stop()
 
-
 # ==========================================
 # UTILITY & REPORT GENERATION FUNCTIONS
 # ==========================================
@@ -130,7 +148,7 @@ def load_model():
 try:
     model = load_model()
 except Exception as e:
-    st.error(f"Error loading model: {e}")
+    st.error(f"Error loading ML model file 'inventory_forecasting_model.pkl': {e}")
     st.stop()
 
 def convert_df_to_excel(df):
@@ -157,7 +175,7 @@ def generate_pdf_report(df):
     pdf.set_font("Arial", "", 9)
     for _, row in df.iterrows():
         pdf.cell(col_widths[0], 8, str(row["SKU ID"]), border=1)
-        pdf.cell(col_widths[1], 8, str(row["Item Name"]), border=1)
+        pdf.cell(col_widths[1], 8, str(row["Item Name"])[:30], border=1)
         pdf.cell(col_widths[2], 8, str(row["Current Stock"]), border=1, align="C")
         pdf.cell(col_widths[3], 8, str(row["Suggested Order Qty"]), border=1, align="C")
         pdf.ln()
@@ -236,7 +254,6 @@ def get_total_deductions_by_item():
         deductions = pd.DataFrame(columns=["item_name", "total_sold"])
     return dict(zip(deductions["item_name"], deductions["total_sold"]))
 
-
 def send_low_stock_email(item_name, current_stock, reorder_point, suggested_qty, sender_email, app_password, receiver_email):
     try:
         msg = MIMEMultipart()
@@ -269,7 +286,6 @@ def send_low_stock_email(item_name, current_stock, reorder_point, suggested_qty,
         st.error(f"Failed to send email alert: {e}")
         return False
 
-
 # ==========================================
 # DATA LOADING & INVENTORY ENGINE
 # ==========================================
@@ -279,7 +295,6 @@ try:
 except Exception:
     st.error("Data file 'wholesale_sales_processed.csv' missing!")
     st.stop()
-
 
 # ==========================================
 # SIDEBAR CONTROL PANEL & RBAC NAVIGATION
@@ -295,7 +310,6 @@ if st.sidebar.button("Logout", key="logout_btn"):
 
 st.sidebar.markdown("---")
 
-# Granular Role-Based Menu Mapping
 ROLE_PERMISSIONS = {
     "Admin": ["🧾 Billing & Invoicing", "💰 Financial Analytics", "🛒 Purchase Orders", "📈 Demand Forecasts", "⚠️ Dead Stock Detector", "📜 Sales Records"],
     "Cashier": ["🧾 Billing & Invoicing"],
@@ -313,12 +327,16 @@ lead_time = st.sidebar.slider("Lead Time (Days)", 1, 14, 3)
 service_level = st.sidebar.selectbox("Protection Level", ["95% (Recommended)", "90% (Moderate)", "99% (Maximum)"])
 z_score = {"95% (Recommended)": 1.65, "90% (Moderate)": 1.28, "99% (Maximum)": 2.33}.get(service_level, 1.65)
 
+s_email = st.secrets.get("SENDER_EMAIL") or os.getenv("SENDER_EMAIL", "")
+a_pass = st.secrets.get("SENDER_PASSWORD") or os.getenv("APP_PASSWORD", "")
+r_email = st.secrets.get("RECEIVER_EMAIL") or os.getenv("RECEIVER_EMAIL", "")
+
 if current_role in ["Admin", "Inventory Manager"]:
     with st.sidebar.expander("📧 Email Alert Settings"):
         enable_email = st.checkbox("Enable Alerts", value=True)
-        sender_email = st.text_input("Sender Gmail", value=os.getenv("SENDER_EMAIL", ""), placeholder="gmail@domain.com")
-        app_password = st.text_input("App Password", value=os.getenv("APP_PASSWORD", ""), type="password")
-        receiver_email = st.text_input("Receiver Email", value=os.getenv("RECEIVER_EMAIL", ""), placeholder="admin@domain.com")
+        sender_email = st.text_input("Sender Gmail", value=s_email, placeholder="gmail@domain.com")
+        app_password = st.text_input("App Password", value=a_pass, type="password")
+        receiver_email = st.text_input("Receiver Email", value=r_email, placeholder="admin@domain.com")
 else:
     enable_email = False
     sender_email, app_password, receiver_email = "", "", ""
@@ -378,27 +396,29 @@ for sku in latest_data["SKU_ID"].unique():
 
 inventory_df = pd.DataFrame(inventory_list)
 
-
 def record_sale_transaction(item, qty, price, cust_name):
     engine = get_db_connection()
     current_timestamp = datetime.now()
     recorded_by = st.session_state.get("user_role", "Staff")
+    
     if engine:
-        # PostgreSQL Transaction Recording
-        with engine.connect() as conn:
-            conn.execute(text("""
-                INSERT INTO sales_history (date, item_name, quantity_sold, unit_price, customer_name, recorded_by)
-                VALUES (:date, :item, :qty, :price, :cust, :user)
-           """), {"date": current_timestamp, "item": str(item), "qty": float(qty), "price": float(price), "cust": str(cust_name), "user": str(recorded_by)})
-            conn.commit()
-    else:
-        # SQLite Transaction Recording Fallback
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("""
+                    INSERT INTO sales_history (date, item_name, quantity_sold, unit_price, customer_name, recorded_by)
+                    VALUES (:date, :item, :qty, :price, :cust, :user)
+                """), {"date": current_timestamp, "item": str(item), "qty": float(qty), "price": float(price), "cust": str(cust_name), "user": str(recorded_by)})
+                conn.commit()
+        except Exception:
+            engine = None
+
+    if not engine:
         conn = sqlite3.connect("inventory.db")
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO sales_history (date, item_name, quantity_sold, unit_price, customer_name, recorded_by)
             VALUES (?, ?, ?, ?, ?, ?)
-        """, (current_timestamp.strftime("%Y-%m-%d %H:%M:%S"), item, qty, price, cust_name, recorded_by))
+        """, (current_timestamp.strftime("%Y-%m-%d %H:%M:%S"), str(item), float(qty), float(price), str(cust_name), str(recorded_by)))
         conn.commit()
         conn.close()
 
@@ -410,7 +430,6 @@ def record_sale_transaction(item, qty, price, cust_name):
 
         if curr_stk <= reorder_pt and enable_email and sender_email and app_password and receiver_email:
             send_low_stock_email(item, curr_stk, reorder_pt, sug_qty, sender_email, app_password, receiver_email)
-
 
 # ==========================================
 # DASHBOARD MODULES & VIEW ROUTING
@@ -493,7 +512,7 @@ if selected_page == "🧾 Billing & Invoicing":
                 record_sale_transaction(item["item_name"], item["qty"], item["unit_price"], cust_name)
 
             pdf_data = generate_customer_invoice(cust_name, cust_phone, st.session_state["billing_cart"], discount, net_total)
-            st.success("Transaction recorded successfully with exact timestamp!")
+            st.success("Transaction recorded successfully!")
 
             st.download_button(
                 label="📄 Download Printable PDF Invoice",
@@ -558,11 +577,19 @@ elif selected_page == "📜 Sales Records":
     engine = get_db_connection()
     query = "SELECT id, date, customer_name, item_name, quantity_sold, unit_price, recorded_by FROM sales_history ORDER BY id DESC LIMIT 100"
     
+    df_db = pd.DataFrame()
     if engine:
-        df_db = pd.read_sql_query(query, engine)
-    else:
+        try:
+            df_db = pd.read_sql_query(query, engine)
+        except Exception:
+            engine = None
+
+    if not engine or df_db.empty:
         conn = sqlite3.connect("inventory.db")
-        df_db = pd.read_sql_query(query, conn)
+        try:
+            df_db = pd.read_sql_query(query, conn)
+        except Exception:
+            pass
         conn.close()
 
     if not df_db.empty:
