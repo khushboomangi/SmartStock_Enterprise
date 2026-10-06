@@ -262,7 +262,7 @@ def send_low_stock_email(item_name, current_stock, safety_stock, suggested_qty, 
 
         Attention Admin,
 
-        Item '{item_name}' has dropped below its safe stock threshold!
+        Item '{item_name}' has reached/dropped below its safety stock threshold!
 
         • Current Stock: {current_stock} units
         • Safety Stock Threshold: {safety_stock} units
@@ -370,7 +370,7 @@ for sku in latest_data["SKU_ID"].unique():
     deducted_qty = live_deductions.get(item_name, 0.0)
     current_stock = max(0, int(base_stock - deducted_qty))
 
-    # CHANGED: Filtering condition set strictly to Safety Stock instead of Re-Order Point
+    # RESTORED: Triggers when stock is less than or equal to Safety Stock
     needs_order = current_stock <= safety_stock
     order_qty = max(0, (safety_stock * 2) - current_stock) if needs_order else 0
     is_dead = avg_sales < 5 and current_stock > 50
@@ -433,7 +433,7 @@ def record_sale_transaction(item, qty, price, cust_name):
         safety_stk = item_row["Safety Stock"].values[0]
         sug_qty = item_row["Suggested Order Qty"].values[0]
 
-        # CHANGED: Triggers alert strictly when current stock drops to Safety Stock or lower
+        # RESTORED: Email triggers when stock reaches or drops below Safety Stock
         if curr_stk <= safety_stk and enable_email and sender_email and app_password and receiver_email:
             send_low_stock_email(item, curr_stk, safety_stk, sug_qty, sender_email, app_password, receiver_email)
 
@@ -550,7 +550,6 @@ elif selected_page == "➕ Add New Product":
         if new_item_name.strip() == "":
             st.error("Please enter a valid product name!")
         else:
-            # Create a new record entry
             new_entry = {
                 "Date": datetime.now().strftime("%Y-%m-%d"),
                 "SKU_ID": new_sku_id,
@@ -574,7 +573,6 @@ elif selected_page == "➕ Add New Product":
                 "Rolling_Std_30": 1.0
             }
             
-            # Read existing dataset first to preserve original products, then append new row
             try:
                 existing_df = pd.read_csv("wholesale_sales_processed.csv")
                 updated_df = pd.concat([existing_df, pd.DataFrame([new_entry])], ignore_index=True)
