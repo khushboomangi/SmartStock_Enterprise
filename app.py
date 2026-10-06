@@ -529,13 +529,13 @@ if selected_page == "🧾 Billing & Invoicing":
 # Module 2: Add New Product (Dynamic Stock Entry)
 elif selected_page == "➕ Add New Product":
     st.subheader("➕ Add New Inventory Item to System")
-    st.caption("Use this form to register new products (Electronics, Laptops, Groceries, etc.) directly into the active dataset.")
+    st.caption("Use this form to register new products directly into the active dataset.")
 
     with st.form("new_product_form", clear_on_submit=True):
         f_col1, f_col2 = st.columns(2)
         with f_col1:
-            new_item_name = st.text_input("Product Name", placeholder="e.g. Cooking Oil 1L")
-            new_category = st.text_input("Category", placeholder="e.g. Grocery")
+            new_item_name = st.text_input("Product Name", placeholder="e.g. Dell XPS Laptop")
+            new_category = st.text_input("Category", placeholder="e.g. Electronics")
             new_unit_price = st.number_input("Selling Price (PKR)", min_value=1.0, value=100.0, step=10.0)
         
         with f_col2:
@@ -548,7 +548,7 @@ elif selected_page == "➕ Add New Product":
         if new_item_name.strip() == "":
             st.error("Please enter a valid product name!")
         else:
-            # Create a new record with all necessary default features for model prediction compatibility
+            # Create a new record entry
             new_entry = {
                 "Date": datetime.now().strftime("%Y-%m-%d"),
                 "SKU_ID": new_sku_id,
@@ -572,13 +572,15 @@ elif selected_page == "➕ Add New Product":
                 "Rolling_Std_30": 1.0
             }
             
-            # Append new record into CSV dataset
-            new_df = pd.DataFrame([new_entry])
-            new_df.to_csv("wholesale_sales_processed.csv", mode='a', header=False, index=False)
-            
-            st.success(f"✅ Success! '{new_item_name}' has been added to the inventory system.")
-            st.info("Refreshing dashboard to reflect new product...")
-            st.rerun()
+            # Read existing dataset first to preserve original products, then append new row
+            try:
+                existing_df = pd.read_csv("wholesale_sales_processed.csv")
+                updated_df = pd.concat([existing_df, pd.DataFrame([new_entry])], ignore_index=True)
+                updated_df.to_csv("wholesale_sales_processed.csv", index=False)
+                st.success(f"✅ Success! '{new_item_name}' has been added to inventory.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Failed to save product: {e}")
 
 # Module 3: Financial Analytics
 elif selected_page == "💰 Financial Analytics":
