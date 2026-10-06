@@ -61,7 +61,7 @@ def get_db_connection():
                 pass
             return engine
         except Exception:
-            st.warning("⚠️️ Could not connect to Cloud PostgreSQL. Activating local SQLite fallback database.")
+            st.warning("⚠️ Could not connect to Cloud PostgreSQL. Activating local SQLite fallback database.")
             return None
     return None
 
@@ -463,7 +463,7 @@ if selected_page == "🧾 Billing & Invoicing":
 
     c1, c2 = st.columns(2)
     with c1:
-        cust_name = st.text_input("Customer Name", placeholder="e.g. Ali Traders")
+        cust_name = st.text_input("Customer Name", placeholder="e.g. Acme Corp / Walk-in")
         cust_phone = st.text_input("Phone Number", placeholder="0300-XXXXXXX")
     with c2:
         st.text_input("Transaction Date & Time", value=datetime.now().strftime("%Y-%m-%d %I:%M %p"), disabled=True)
@@ -527,17 +527,17 @@ if selected_page == "🧾 Billing & Invoicing":
             )
             st.session_state["billing_cart"] = []
 
-# Module 2: Inventory Management (Add New Products)
+# Module 2: Inventory Management (Add New Products Dynamic Form)
 elif selected_page == "➕ Inventory Management":
     st.subheader("➕ Add New Item / Product To Store Inventory")
-    st.info("Use this form to dynamically add new products (e.g., Laptops, Electronics, Groceries) directly into the active store inventory.")
+    st.info("Use this form to dynamically add any new item category (e.g. FMCG, Electronics, Hardware, Apparel) directly into the store inventory.")
 
     with st.form("add_new_product_form", clear_on_submit=True):
         f_col1, f_col2 = st.columns(2)
         with f_col1:
-            new_item_name = st.text_input("Item / Product Name", placeholder="e.g. Dell Laptop Core i7")
-            new_category = st.text_input("Category", placeholder="e.g. Electronics")
-            new_unit_price = st.number_input("Selling Price (PKR)", min_value=1.0, value=150000.0, step=500.0)
+            new_item_name = st.text_input("Item / Product Name", placeholder="e.g. Wireless Router, Organic Rice 5kg, Denim Jacket")
+            new_category = st.text_input("Category", placeholder="e.g. Networking, Groceries, Apparel")
+            new_unit_price = st.number_input("Selling Price (PKR)", min_value=1.0, value=1500.0, step=50.0)
         
         with f_col2:
             new_sku_id = st.text_input("SKU ID", value=f"SKU_{np.random.randint(1000, 9999)}")
