@@ -534,8 +534,8 @@ elif selected_page == "➕ Add New Product":
     with st.form("new_product_form", clear_on_submit=True):
         f_col1, f_col2 = st.columns(2)
         with f_col1:
-            new_item_name = st.text_input("Product Name", placeholder="e.g. Dell XPS Laptop")
-            new_category = st.text_input("Category", placeholder="e.g. Electronics")
+            new_item_name = st.text_input("Product Name", placeholder="e.g. Cooking Oil 1L")
+            new_category = st.text_input("Category", placeholder="e.g. Grocery")
             new_unit_price = st.number_input("Selling Price (PKR)", min_value=1.0, value=100.0, step=10.0)
         
         with f_col2:
