@@ -61,7 +61,7 @@ def get_db_connection():
                 pass
             return engine
         except Exception:
-            st.warning("⚠️ Cloud PostgreSQL connect nahi ho saka. Local SQLite database activate ho raha hai.")
+            st.warning("⚠️️ Could not connect to Cloud PostgreSQL. Activating local SQLite fallback database.")
             return None
     return None
 
@@ -268,7 +268,7 @@ def send_low_stock_email(item_name, current_stock, reorder_point, suggested_qty,
         • Re-Order Point Threshold: {reorder_point} units
         • Suggested Order Quantity: {suggested_qty} units
 
-        Please log in to SmartStock Dashboard to generate and approve the purchase order.
+        Please log in to the SmartStock Dashboard to generate and approve the purchase order.
         """
         msg.attach(MIMEText(body, 'plain'))
 
@@ -289,7 +289,7 @@ try:
     df = pd.read_csv("wholesale_sales_processed.csv")
     df["Date"] = pd.to_datetime(df["Date"])
 except Exception:
-    st.error("Data file 'wholesale_sales_processed.csv' missing!")
+    st.error("Data file 'wholesale_sales_processed.csv' is missing!")
     st.stop()
 
 # ==========================================
@@ -341,7 +341,7 @@ features = ["Unit_Price", "Day_Of_Week", "Day_Of_Month", "Month", "Is_Weekend", 
 latest_date = df["Date"].max()
 latest_data = df[df["Date"] == latest_date].copy()
 
-# Feature alignment check for newly added custom items
+# Ensure all feature columns exist for newly added items
 for feat in features:
     if feat not in latest_data.columns:
         latest_data[feat] = 0
@@ -527,10 +527,10 @@ if selected_page == "🧾 Billing & Invoicing":
             )
             st.session_state["billing_cart"] = []
 
-# Module 2: Inventory Management (NEW PRODUCT ADDITION OPTION)
+# Module 2: Inventory Management (Add New Products)
 elif selected_page == "➕ Inventory Management":
     st.subheader("➕ Add New Item / Product To Store Inventory")
-    st.info("Yahan se aap kisi bhi naye item (jaise Laptop, Electronics, Groceries) ko dynamic taur par inventory mein add kar sakti hain.")
+    st.info("Use this form to dynamically add new products (e.g., Laptops, Electronics, Groceries) directly into the active store inventory.")
 
     with st.form("add_new_product_form", clear_on_submit=True):
         f_col1, f_col2 = st.columns(2)
@@ -573,14 +573,14 @@ elif selected_page == "➕ Inventory Management":
                 "Rolling_Std_30": 1.0
             }
 
-            # Append to wholesale_sales_processed.csv
+            # Append to wholesale_sales_processed.csv dataset
             df_new = pd.DataFrame([new_row])
             df_new.to_csv("wholesale_sales_processed.csv", mode='a', header=False, index=False)
 
-            st.success(f"✅ '{new_item_name}' successfully inventory aur dataset mein add ho gaya hai!")
+            st.success(f"✅ Product '{new_item_name}' was successfully added to the dataset and live inventory!")
             st.rerun()
         else:
-            st.error("Kripya item ka naam zaroor enter karein!")
+            st.error("Please enter a valid item name!")
 
 # Module 3: Financial Analytics
 elif selected_page == "💰 Financial Analytics":
