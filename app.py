@@ -265,7 +265,7 @@ def send_low_stock_email(item_name, current_stock, reorder_point, suggested_qty,
         Item '{item_name}' has dropped below its safe stock threshold!
 
         • Current Stock: {current_stock} units
-        • Re-Order Point Threshold: {reorder_point} units
+        • Safety Stock Threshold: {reorder_point} units
         • Suggested Order Quantity: {suggested_qty} units
 
         Please log in to SmartStock Dashboard to generate and approve the purchase order.
@@ -370,8 +370,9 @@ for sku in latest_data["SKU_ID"].unique():
     deducted_qty = live_deductions.get(item_name, 0.0)
     current_stock = max(0, int(base_stock - deducted_qty))
 
-    needs_order = current_stock <= reorder_point
-    order_qty = max(0, (reorder_point * 2) - current_stock) if needs_order else 0
+    # CHANGED: Filtering strictly by Safety Stock instead of Re-Order Point
+    needs_order = current_stock <= safety_stock
+    order_qty = max(0, (safety_stock * 2) - current_stock) if needs_order else 0
     is_dead = avg_sales < 5 and current_stock > 50
 
     unit_price = float(item_info["Unit_Price"])
@@ -429,11 +430,11 @@ def record_sale_transaction(item, qty, price, cust_name):
     item_row = inventory_df[inventory_df["Item Name"] == item]
     if not item_row.empty:
         curr_stk = item_row["Current Stock"].values[0] - qty
-        reorder_pt = item_row["Re-Order Point"].values[0]
+        safety_stk = item_row["Safety Stock"].values[0]
         sug_qty = item_row["Suggested Order Qty"].values[0]
 
-        if curr_stk <= reorder_pt and enable_email and sender_email and app_password and receiver_email:
-            send_low_stock_email(item, curr_stk, reorder_pt, sug_qty, sender_email, app_password, receiver_email)
+        if curr_stk <= safety_stk and enable_email and sender_email and app_password and receiver_email:
+            send_low_stock_email(item, curr_stk, safety_stk, sug_qty, sender_email, app_password, receiver_email)
 
 # ==========================================
 # DASHBOARD MODULES & VIEW ROUTING
