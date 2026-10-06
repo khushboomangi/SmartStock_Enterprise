@@ -34,7 +34,6 @@ st.set_page_config(
 # ==========================================
 # DATABASE ENGINE (PostgreSQL with Timeout & Fallback)
 # ==========================================
-# Secret management: Prioritize Streamlit Secrets, fallback to os.getenv
 DB_URI = st.secrets.get("postgres", {}).get("url") or os.getenv("DATABASE_URL")
 
 @st.cache_resource
@@ -51,7 +50,6 @@ def get_db_connection():
             uri = uri.split("&channel_binding=")[0]
             
         try:
-            # Added connect_timeout=5 to prevent infinite loading hang
             engine = create_engine(
                 uri, 
                 pool_size=5, 
@@ -59,11 +57,10 @@ def get_db_connection():
                 pool_pre_ping=True,
                 connect_args={"connect_timeout": 5}
             )
-            # Connection test
             with engine.connect() as conn:
                 pass
             return engine
-        except Exception as e:
+        except Exception:
             st.warning("⚠️ Cloud PostgreSQL connect nahi ho saka. Local SQLite database activate ho raha hai.")
             return None
     return None
@@ -89,7 +86,6 @@ def init_db():
         except Exception:
             pass
             
-    # SQLite Fallback Execution
     conn = sqlite3.connect("inventory.db")
     cursor = conn.cursor()
     cursor.execute("""
@@ -311,9 +307,9 @@ if st.sidebar.button("Logout", key="logout_btn"):
 st.sidebar.markdown("---")
 
 ROLE_PERMISSIONS = {
-    "Admin": ["🧾 Billing & Invoicing", "💰 Financial Analytics", "🛒 Purchase Orders", "📈 Demand Forecasts", "⚠️ Dead Stock Detector", "📜 Sales Records"],
+    "Admin": ["🧾 Billing & Invoicing", "➕ Inventory Management", "💰 Financial Analytics", "🛒 Purchase Orders", "📈 Demand Forecasts", "⚠️ Dead Stock Detector", "📜 Sales Records"],
     "Cashier": ["🧾 Billing & Invoicing"],
-    "Inventory Manager": ["🛒 Purchase Orders", "📈 Demand Forecasts", "⚠️ Dead Stock Detector"],
+    "Inventory Manager": ["➕ Inventory Management", "🛒 Purchase Orders", "📈 Demand Forecasts", "⚠️ Dead Stock Detector"],
     "Accountant": ["💰 Financial Analytics", "📜 Sales Records"],
     "Staff": ["🧾 Billing & Invoicing", "📜 Sales Records"]
 }
@@ -344,6 +340,12 @@ else:
 features = ["Unit_Price", "Day_Of_Week", "Day_Of_Month", "Month", "Is_Weekend", "Quantity_Lag_1", "Quantity_Lag_7", "Quantity_Lag_14", "Quantity_Lag_30", "Rolling_Mean_7", "Rolling_Std_7", "Rolling_Mean_14", "Rolling_Std_14", "Rolling_Mean_30", "Rolling_Std_30"]
 latest_date = df["Date"].max()
 latest_data = df[df["Date"] == latest_date].copy()
+
+# Feature alignment check for newly added custom items
+for feat in features:
+    if feat not in latest_data.columns:
+        latest_data[feat] = 0
+
 latest_data["Predicted_Demand"] = model.predict(latest_data[features])
 
 live_deductions = get_total_deductions_by_item()
@@ -354,14 +356,17 @@ for sku in latest_data["SKU_ID"].unique():
     item_info = latest_data[latest_data["SKU_ID"] == sku].iloc[0]
     item_name = item_info["Item_Name"]
 
-    std_sales = item_data["Quantity_Sold"].tail(30).std()
-    avg_sales = item_data["Quantity_Sold"].tail(30).mean()
+    std_sales = item_data["Quantity_Sold"].tail(30).std() if len(item_data) >= 2 else 1.0
+    avg_sales = item_data["Quantity_Sold"].tail(30).mean() if len(item_data) >= 1 else 10.0
+
+    if pd.isna(std_sales): std_sales = 1.0
+    if pd.isna(avg_sales): avg_sales = 10.0
 
     safety_stock = int(z_score * std_sales * np.sqrt(lead_time))
     reorder_point = int((avg_sales * lead_time) + safety_stock)
 
-    np.random.seed(hash(sku) % 1000)
-    base_stock = np.random.randint(low=int(reorder_point * 0.3), high=int(reorder_point * 2.0))
+    np.random.seed(hash(str(sku)) % 1000)
+    base_stock = np.random.randint(low=max(1, int(reorder_point * 0.3)), high=max(2, int(reorder_point * 2.0)))
 
     deducted_qty = live_deductions.get(item_name, 0.0)
     current_stock = max(0, int(base_stock - deducted_qty))
@@ -379,7 +384,7 @@ for sku in latest_data["SKU_ID"].unique():
     inventory_list.append({
         "SKU ID": sku,
         "Item Name": item_name,
-        "Category": item_info["Category"],
+        "Category": item_info.get("Category", "General"),
         "Current Stock": current_stock,
         "Cost Price (PKR)": round(cost_price, 2),
         "Selling Price (PKR)": round(unit_price, 2),
@@ -522,7 +527,62 @@ if selected_page == "🧾 Billing & Invoicing":
             )
             st.session_state["billing_cart"] = []
 
-# Module 2: Financial Analytics
+# Module 2: Inventory Management (NEW PRODUCT ADDITION OPTION)
+elif selected_page == "➕ Inventory Management":
+    st.subheader("➕ Add New Item / Product To Store Inventory")
+    st.info("Yahan se aap kisi bhi naye item (jaise Laptop, Electronics, Groceries) ko dynamic taur par inventory mein add kar sakti hain.")
+
+    with st.form("add_new_product_form", clear_on_submit=True):
+        f_col1, f_col2 = st.columns(2)
+        with f_col1:
+            new_item_name = st.text_input("Item / Product Name", placeholder="e.g. Dell Laptop Core i7")
+            new_category = st.text_input("Category", placeholder="e.g. Electronics")
+            new_unit_price = st.number_input("Selling Price (PKR)", min_value=1.0, value=150000.0, step=500.0)
+        
+        with f_col2:
+            new_sku_id = st.text_input("SKU ID", value=f"SKU_{np.random.randint(1000, 9999)}")
+            initial_stock_sold = st.number_input("Initial Sales Quantity Record", min_value=1.0, value=10.0, step=1.0)
+            
+        submit_product = st.form_submit_button("➕ Save Product To Inventory", type="primary")
+
+    if submit_product:
+        if new_item_name.strip() != "":
+            now = datetime.now()
+            
+            # Prepare new record row according to CSV structure
+            new_row = {
+                "Date": now.strftime("%Y-%m-%d"),
+                "SKU_ID": new_sku_id,
+                "Item_Name": new_item_name,
+                "Category": new_category if new_category else "General",
+                "Quantity_Sold": initial_stock_sold,
+                "Unit_Price": new_unit_price,
+                "Day_Of_Week": now.weekday(),
+                "Day_Of_Month": now.day,
+                "Month": now.month,
+                "Is_Weekend": 1 if now.weekday() in [5, 6] else 0,
+                "Quantity_Lag_1": initial_stock_sold,
+                "Quantity_Lag_7": initial_stock_sold,
+                "Quantity_Lag_14": initial_stock_sold,
+                "Quantity_Lag_30": initial_stock_sold,
+                "Rolling_Mean_7": initial_stock_sold,
+                "Rolling_Std_7": 1.0,
+                "Rolling_Mean_14": initial_stock_sold,
+                "Rolling_Std_14": 1.0,
+                "Rolling_Mean_30": initial_stock_sold,
+                "Rolling_Std_30": 1.0
+            }
+
+            # Append to wholesale_sales_processed.csv
+            df_new = pd.DataFrame([new_row])
+            df_new.to_csv("wholesale_sales_processed.csv", mode='a', header=False, index=False)
+
+            st.success(f"✅ '{new_item_name}' successfully inventory aur dataset mein add ho gaya hai!")
+            st.rerun()
+        else:
+            st.error("Kripya item ka naam zaroor enter karein!")
+
+# Module 3: Financial Analytics
 elif selected_page == "💰 Financial Analytics":
     st.subheader("💰 Profit Margin & Inventory Capital Breakdown")
     fin_cols = ["SKU ID", "Item Name", "Category", "Current Stock", "Cost Price (PKR)", "Selling Price (PKR)", "Stock Cost Value (PKR)", "Est. Gross Profit (PKR)"]
@@ -534,7 +594,7 @@ elif selected_page == "💰 Financial Analytics":
     )
     st.plotly_chart(fig_margin, use_container_width=True)
 
-# Module 3: Purchase Orders
+# Module 4: Purchase Orders
 elif selected_page == "🛒 Purchase Orders":
     st.subheader("🛒 Supplier Re-Order Recommendations")
     order_now_df = inventory_df[inventory_df["Status"] == "🚨 ORDER NOW"]
@@ -553,7 +613,7 @@ elif selected_page == "🛒 Purchase Orders":
     st.subheader("📋 Full Inventory Master Table")
     st.dataframe(inventory_df, use_container_width=True)
 
-# Module 4: Demand Forecasts
+# Module 5: Demand Forecasts
 elif selected_page == "📈 Demand Forecasts":
     st.subheader("📈 Historical Demand & Forecast Analytics")
     selected_sku = st.selectbox("Select Product to Analyze:", df["Item_Name"].unique())
@@ -561,7 +621,7 @@ elif selected_page == "📈 Demand Forecasts":
     fig = px.line(sku_data, x="Date", y="Quantity_Sold", title=f"90-Day Demand Trend for {selected_sku}")
     st.plotly_chart(fig, use_container_width=True)
 
-# Module 5: Dead Stock Detector
+# Module 6: Dead Stock Detector
 elif selected_page == "⚠️ Dead Stock Detector":
     st.subheader("⚠️ Dead Stock & Blocked Capital Detector")
     dead_stock_df = inventory_df[inventory_df["Dead Stock Warning"] != "Clear"]
@@ -571,7 +631,7 @@ elif selected_page == "⚠️ Dead Stock Detector":
     else:
         st.success("No dead stock detected!")
 
-# Module 6: Sales Records
+# Module 7: Sales Records
 elif selected_page == "📜 Sales Records":
     st.subheader("📜 Recorded Sales Transactions")
     engine = get_db_connection()
