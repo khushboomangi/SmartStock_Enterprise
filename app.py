@@ -250,7 +250,7 @@ def get_total_deductions_by_item():
         deductions = pd.DataFrame(columns=["item_name", "total_sold"])
     return dict(zip(deductions["item_name"], deductions["total_sold"]))
 
-def send_low_stock_email(item_name, current_stock, reorder_point, suggested_qty, sender_email, app_password, receiver_email):
+def send_low_stock_email(item_name, current_stock, safety_stock, suggested_qty, sender_email, app_password, receiver_email):
     try:
         msg = MIMEMultipart()
         msg['From'] = sender_email
@@ -265,7 +265,7 @@ def send_low_stock_email(item_name, current_stock, reorder_point, suggested_qty,
         Item '{item_name}' has dropped below its safe stock threshold!
 
         • Current Stock: {current_stock} units
-        • Safety Stock Threshold: {reorder_point} units
+        • Safety Stock Threshold: {safety_stock} units
         • Suggested Order Quantity: {suggested_qty} units
 
         Please log in to SmartStock Dashboard to generate and approve the purchase order.
@@ -370,7 +370,7 @@ for sku in latest_data["SKU_ID"].unique():
     deducted_qty = live_deductions.get(item_name, 0.0)
     current_stock = max(0, int(base_stock - deducted_qty))
 
-    # CHANGED: Filtering strictly by Safety Stock instead of Re-Order Point
+    # CHANGED: Filtering condition set strictly to Safety Stock instead of Re-Order Point
     needs_order = current_stock <= safety_stock
     order_qty = max(0, (safety_stock * 2) - current_stock) if needs_order else 0
     is_dead = avg_sales < 5 and current_stock > 50
@@ -433,6 +433,7 @@ def record_sale_transaction(item, qty, price, cust_name):
         safety_stk = item_row["Safety Stock"].values[0]
         sug_qty = item_row["Suggested Order Qty"].values[0]
 
+        # CHANGED: Triggers alert strictly when current stock drops to Safety Stock or lower
         if curr_stk <= safety_stk and enable_email and sender_email and app_password and receiver_email:
             send_low_stock_email(item, curr_stk, safety_stk, sug_qty, sender_email, app_password, receiver_email)
 
