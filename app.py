@@ -285,12 +285,15 @@ def send_low_stock_email(item_name, current_stock, safety_stock, suggested_qty, 
 # ==========================================
 # DATA LOADING & INVENTORY ENGINE
 # ==========================================
-try:
-    df = pd.read_csv("wholesale_sales_processed.csv")
-    df["Date"] = pd.to_datetime(df["Date"])
-except Exception:
-    st.error("Data file 'wholesale_sales_processed.csv' missing!")
-    st.stop()
+def load_data():
+    if not os.path.exists("wholesale_sales_processed.csv"):
+        st.error("Data file 'wholesale_sales_processed.csv' missing!")
+        st.stop()
+    df_data = pd.read_csv("wholesale_sales_processed.csv")
+    df_data["Date"] = pd.to_datetime(df_data["Date"])
+    return df_data
+
+df = load_data()
 
 # ==========================================
 # SIDEBAR CONTROL PANEL & RBAC NAVIGATION
@@ -318,7 +321,7 @@ menu_options = ROLE_PERMISSIONS.get(current_role, ["🧾 Billing & Invoicing"])
 selected_page = st.sidebar.radio("Navigation Menu", menu_options)
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("⚙️ Inventory Parameters")
+st.sidebar.subheader("⚙️️ Inventory Parameters")
 lead_time = st.sidebar.slider("Lead Time (Days)", 1, 14, 3)
 service_level = st.sidebar.selectbox("Protection Level", ["95% (Recommended)", "90% (Moderate)", "99% (Maximum)"])
 z_score = {"95% (Recommended)": 1.65, "90% (Moderate)": 1.28, "99% (Maximum)": 2.33}.get(service_level, 1.65)
@@ -338,23 +341,26 @@ else:
     sender_email, app_password, receiver_email = "", "", ""
 
 features = ["Unit_Price", "Day_Of_Week", "Day_Of_Month", "Month", "Is_Weekend", "Quantity_Lag_1", "Quantity_Lag_7", "Quantity_Lag_14", "Quantity_Lag_30", "Rolling_Mean_7", "Rolling_Std_7", "Rolling_Mean_14", "Rolling_Std_14", "Rolling_Mean_30", "Rolling_Std_30"]
-latest_date = df["Date"].max()
-latest_data = df[df["Date"] == latest_date].copy()
-
-# Ensure missing feature columns exist for newly added custom products
-for feature in features:
-    if feature not in latest_data.columns:
-        latest_data[feature] = 0
-
-latest_data["Predicted_Demand"] = model.predict(latest_data[features])
 
 live_deductions = get_total_deductions_by_item()
 inventory_list = []
 
-for sku in latest_data["SKU_ID"].unique():
+# FIX: Loop through ALL unique SKUs across the dataset
+for sku in df["SKU_ID"].dropna().unique():
     item_data = df[df["SKU_ID"] == sku].sort_values("Date")
-    item_info = latest_data[latest_data["SKU_ID"] == sku].iloc[0]
-    item_name = item_info["Item_Name"]
+    item_info = item_data.iloc[-1]
+    item_name = str(item_info["Item_Name"])
+
+    # Predict demand safely
+    feature_row = pd.DataFrame([item_info])
+    for f in features:
+        if f not in feature_row.columns:
+            feature_row[f] = 0
+    
+    try:
+        predicted_demand = int(model.predict(feature_row[features])[0])
+    except Exception:
+        predicted_demand = int(item_data["Quantity_Sold"].mean() if len(item_data) > 0 else 5)
 
     std_sales = item_data["Quantity_Sold"].tail(30).std() if len(item_data) > 1 else 1.0
     avg_sales = item_data["Quantity_Sold"].tail(30).mean() if len(item_data) > 0 else 5.0
@@ -364,18 +370,18 @@ for sku in latest_data["SKU_ID"].unique():
     safety_stock = int(z_score * std_sales * np.sqrt(lead_time))
     reorder_point = int((avg_sales * lead_time) + safety_stock)
 
-    np.random.seed(hash(sku) % 1000)
+    np.random.seed(abs(hash(str(sku))) % 1000000)
     base_stock = np.random.randint(low=max(1, int(reorder_point * 0.3)), high=max(2, int(reorder_point * 2.0)))
 
     deducted_qty = live_deductions.get(item_name, 0.0)
     current_stock = max(0, int(base_stock - deducted_qty))
 
-    # RESTORED: Triggers when stock is less than or equal to Safety Stock
+    # FIX: Re-order triggers if Current Stock is <= Safety Stock OR 0
     needs_order = current_stock <= safety_stock
     order_qty = max(0, (safety_stock * 2) - current_stock) if needs_order else 0
     is_dead = avg_sales < 5 and current_stock > 50
 
-    unit_price = float(item_info["Unit_Price"])
+    unit_price = float(item_info["Unit_Price"]) if "Unit_Price" in item_info and not pd.isna(item_info["Unit_Price"]) else 100.0
     cost_price = float(unit_price * 0.75)
     stock_cost_value = current_stock * cost_price
     stock_sales_value = current_stock * unit_price
@@ -384,7 +390,7 @@ for sku in latest_data["SKU_ID"].unique():
     inventory_list.append({
         "SKU ID": sku,
         "Item Name": item_name,
-        "Category": item_info["Category"],
+        "Category": item_info.get("Category", "General"),
         "Current Stock": current_stock,
         "Cost Price (PKR)": round(cost_price, 2),
         "Selling Price (PKR)": round(unit_price, 2),
@@ -393,7 +399,7 @@ for sku in latest_data["SKU_ID"].unique():
         "Est. Gross Profit (PKR)": round(projected_profit, 2),
         "Re-Order Point": reorder_point,
         "Safety Stock": safety_stock,
-        "Predicted Daily Demand": int(item_info["Predicted_Demand"]),
+        "Predicted Daily Demand": predicted_demand,
         "Status": "🚨 ORDER NOW" if needs_order else "✅ OK",
         "Suggested Order Qty": order_qty,
         "Dead Stock Warning": "⚠️ CAPITAL BLOCKED" if is_dead else "Clear",
@@ -433,7 +439,6 @@ def record_sale_transaction(item, qty, price, cust_name):
         safety_stk = item_row["Safety Stock"].values[0]
         sug_qty = item_row["Suggested Order Qty"].values[0]
 
-        # RESTORED: Email triggers when stock reaches or drops below Safety Stock
         if curr_stk <= safety_stk and enable_email and sender_email and app_password and receiver_email:
             send_low_stock_email(item, curr_stk, safety_stk, sug_qty, sender_email, app_password, receiver_email)
 
@@ -528,7 +533,7 @@ if selected_page == "🧾 Billing & Invoicing":
             )
             st.session_state["billing_cart"] = []
 
-# Module 2: Add New Product (Dynamic Stock Entry)
+# Module 2: Add New Product
 elif selected_page == "➕ Add New Product":
     st.subheader("➕ Add New Inventory Item to System")
     st.caption("Use this form to register new products directly into the active dataset.")
@@ -611,7 +616,8 @@ elif selected_page == "🛒 Purchase Orders":
 
     st.markdown("---")
     st.subheader("📋 Full Inventory Master Table")
-    st.dataframe(inventory_df, use_container_width=True)
+    # FIX: Full height given to display all items
+    st.dataframe(inventory_df, use_container_width=True, height=600)
 
 # Module 5: Demand Forecasts
 elif selected_page == "📈 Demand Forecasts":
@@ -622,7 +628,7 @@ elif selected_page == "📈 Demand Forecasts":
     st.plotly_chart(fig, use_container_width=True)
 
 # Module 6: Dead Stock Detector
-elif selected_page == "⚠️ Dead Stock Detector":
+elif selected_page == "⚠️️ Dead Stock Detector":
     st.subheader("⚠️ Dead Stock & Blocked Capital Detector")
     dead_stock_df = inventory_df[inventory_df["Dead Stock Warning"] != "Clear"]
     if not dead_stock_df.empty:
