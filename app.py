@@ -307,7 +307,7 @@ if st.sidebar.button("Logout", key="logout_btn"):
 st.sidebar.markdown("---")
 
 ROLE_PERMISSIONS = {
-    "Admin": ["🧾 Billing & Invoicing", "➕ Inventory Management", "💰 Financial Analytics", "🛒 Purchase Orders", "📈 Demand Forecasts", "⚠️ Dead Stock Detector", "📜 Sales Records"],
+    "Admin": ["🧾 Billing & Invoicing", "➕ Inventory Management", "💰 Financial Analytics", "🛒 Purchase Orders", "📈 Demand Forecasts", "⚠️️ Dead Stock Detector", "📜 Sales Records"],
     "Cashier": ["🧾 Billing & Invoicing"],
     "Inventory Manager": ["➕ Inventory Management", "🛒 Purchase Orders", "📈 Demand Forecasts", "⚠️ Dead Stock Detector"],
     "Accountant": ["💰 Financial Analytics", "📜 Sales Records"],
@@ -318,7 +318,7 @@ menu_options = ROLE_PERMISSIONS.get(current_role, ["🧾 Billing & Invoicing"])
 selected_page = st.sidebar.radio("Navigation Menu", menu_options)
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("⚙️ Inventory Parameters")
+st.sidebar.subheader("⚙️️ Inventory Parameters")
 lead_time = st.sidebar.slider("Lead Time (Days)", 1, 14, 3)
 service_level = st.sidebar.selectbox("Protection Level", ["95% (Recommended)", "90% (Moderate)", "99% (Maximum)"])
 z_score = {"95% (Recommended)": 1.65, "90% (Moderate)": 1.28, "99% (Maximum)": 2.33}.get(service_level, 1.65)
@@ -463,7 +463,7 @@ if selected_page == "🧾 Billing & Invoicing":
 
     c1, c2 = st.columns(2)
     with c1:
-        cust_name = st.text_input("Customer Name", placeholder="e.g. Acme Corp / Walk-in")
+        cust_name = st.text_input("Customer Name", placeholder="e.g. Ali Traders")
         cust_phone = st.text_input("Phone Number", placeholder="0300-XXXXXXX")
     with c2:
         st.text_input("Transaction Date & Time", value=datetime.now().strftime("%Y-%m-%d %I:%M %p"), disabled=True)
@@ -527,21 +527,21 @@ if selected_page == "🧾 Billing & Invoicing":
             )
             st.session_state["billing_cart"] = []
 
-# Module 2: Inventory Management (Add New Products Dynamic Form)
+# Module 2: Inventory Management (Add New Products)
 elif selected_page == "➕ Inventory Management":
     st.subheader("➕ Add New Item / Product To Store Inventory")
-    st.info("Use this form to dynamically add any new item category (e.g. FMCG, Electronics, Hardware, Apparel) directly into the store inventory.")
+    st.info("Use this form to dynamically add any new product category or item directly into the active store inventory.")
 
     with st.form("add_new_product_form", clear_on_submit=True):
         f_col1, f_col2 = st.columns(2)
         with f_col1:
-            new_item_name = st.text_input("Item / Product Name", placeholder="e.g. Wireless Router, Organic Rice 5kg, Denim Jacket")
-            new_category = st.text_input("Category", placeholder="e.g. Networking, Groceries, Apparel")
-            new_unit_price = st.number_input("Selling Price (PKR)", min_value=1.0, value=1500.0, step=50.0)
+            new_item_name = st.text_input("Item / Product Name", placeholder="e.g. Product Name")
+            new_category = st.text_input("Category", placeholder="e.g. General / Electronics / Groceries")
+            new_unit_price = st.number_input("Selling Price (PKR)", min_value=1.0, value=500.0, step=50.0)
         
         with f_col2:
             new_sku_id = st.text_input("SKU ID", value=f"SKU_{np.random.randint(1000, 9999)}")
-            initial_stock_sold = st.number_input("Initial Sales Quantity Record", min_value=1.0, value=10.0, step=1.0)
+            initial_stock_sold = st.number_input("Initial Stock / Recorded Base Quantity", min_value=1.0, value=10.0, step=1.0)
             
         submit_product = st.form_submit_button("➕ Save Product To Inventory", type="primary")
 
@@ -597,65 +597,3 @@ elif selected_page == "💰 Financial Analytics":
 # Module 4: Purchase Orders
 elif selected_page == "🛒 Purchase Orders":
     st.subheader("🛒 Supplier Re-Order Recommendations")
-    order_now_df = inventory_df[inventory_df["Status"] == "🚨 ORDER NOW"]
-
-    if not order_now_df.empty:
-        st.dataframe(order_now_df, use_container_width=True)
-        col1, col2 = st.columns(2)
-        with col1:
-            st.download_button("📊 Export Excel Purchase Order", convert_df_to_excel(order_now_df), "Purchase_Order.xlsx")
-        with col2:
-            st.download_button("📄 Export PDF Purchase Order", generate_pdf_report(order_now_df), "Purchase_Order.pdf")
-    else:
-        st.success("All stock levels are optimal!")
-
-    st.markdown("---")
-    st.subheader("📋 Full Inventory Master Table")
-    st.dataframe(inventory_df, use_container_width=True)
-
-# Module 5: Demand Forecasts
-elif selected_page == "📈 Demand Forecasts":
-    st.subheader("📈 Historical Demand & Forecast Analytics")
-    selected_sku = st.selectbox("Select Product to Analyze:", df["Item_Name"].unique())
-    sku_data = df[df["Item_Name"] == selected_sku].sort_values("Date").tail(90)
-    fig = px.line(sku_data, x="Date", y="Quantity_Sold", title=f"90-Day Demand Trend for {selected_sku}")
-    st.plotly_chart(fig, use_container_width=True)
-
-# Module 6: Dead Stock Detector
-elif selected_page == "⚠️ Dead Stock Detector":
-    st.subheader("⚠️ Dead Stock & Blocked Capital Detector")
-    dead_stock_df = inventory_df[inventory_df["Dead Stock Warning"] != "Clear"]
-    if not dead_stock_df.empty:
-        st.warning("Low-velocity stock detected! Capital blocked in unsold inventory.")
-        st.dataframe(dead_stock_df, use_container_width=True)
-    else:
-        st.success("No dead stock detected!")
-
-# Module 7: Sales Records
-elif selected_page == "📜 Sales Records":
-    st.subheader("📜 Recorded Sales Transactions")
-    engine = get_db_connection()
-    query = "SELECT id, date, customer_name, item_name, quantity_sold, unit_price, recorded_by FROM sales_history ORDER BY id DESC LIMIT 100"
-    
-    df_db = pd.DataFrame()
-    if engine:
-        try:
-            df_db = pd.read_sql_query(query, engine)
-        except Exception:
-            engine = None
-
-    if not engine or df_db.empty:
-        conn = sqlite3.connect("inventory.db")
-        try:
-            df_db = pd.read_sql_query(query, conn)
-        except Exception:
-            pass
-        conn.close()
-
-    if not df_db.empty:
-        st.dataframe(df_db, use_container_width=True)
-    else:
-        st.info("No recorded transactions found.")
-
-st.markdown("---")
-st.caption("⚡ SmartStock Enterprise System")
